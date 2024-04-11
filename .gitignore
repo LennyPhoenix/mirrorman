@@ -1,0 +1,7 @@
+# Rust
+/target
+
+# Testing
+/test
+/test-mirror
+test-mirror.mmdb
