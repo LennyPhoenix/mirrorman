@@ -16,7 +16,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Init { source: PathBuf, mirror: PathBuf },
+    Init {
+        source_directory: PathBuf,
+        mirror_directory: PathBuf,
+    },
     Sync,
 }
 
@@ -62,7 +65,10 @@ fn main() -> Result<(), String> {
     let args = Cli::parse();
 
     match args.cmd {
-        Commands::Init { source, mirror } => init(&source, &mirror),
+        Commands::Init {
+            source_directory,
+            mirror_directory,
+        } => init(&source_directory, &mirror_directory),
         Commands::Sync => sync(),
     }
 }
