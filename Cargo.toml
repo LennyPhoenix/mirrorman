@@ -5,8 +5,10 @@ edition = "2021"
 description = "Media conversion and mirror tool"
 readme = "README.md"
 homepage = "https://github.com/LennyPhoenix/mirrorman"
+respository = "https://github.com/LennyPhoenix/mirrorman.git"
 license-file = "LICENSE"
 keywords = ["mirror", "sync", "convert", "audio", "mp3", "compress"]
+authors = ["Lenny Critchley <LennyPhoenixC@gmail.com>"] 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
