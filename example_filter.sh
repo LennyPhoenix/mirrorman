@@ -19,7 +19,7 @@ fi
 if [ "$CMD" == "run" ]; then
     IN=$2
     OUT=$3
-    ffmpeg -nostdin -i "$IN" -vn -ar 44100 -ac 2 -b:a 192k "$OUT"
+    ffmpeg -nostdin -y -i "$IN" -vn -ar 44100 -ac 2 -b:a 192k "$OUT"
     exit 0
 fi
 
