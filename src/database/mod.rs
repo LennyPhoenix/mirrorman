@@ -3,6 +3,7 @@ mod path;
 
 pub use hash::*;
 pub use path::*;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::walkdir_result_extension::WalkdirResultExtension;
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, Mutex},
 };
 use walkdir::WalkDir;
 
@@ -57,12 +59,16 @@ impl Database {
     }
 
     pub fn sync(&mut self) -> Result<(), String> {
-        let mut new_hashes = BTreeMap::new();
-        let mut mirror_list = BTreeSet::new();
+        let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
+        let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
 
         // Walk source directory
-        WalkDir::new(&self.source_path).into_iter().try_for_each(
-            |entry| -> Result<(), String> {
+        let source_entries = WalkDir::new(&self.source_path)
+            .into_iter()
+            .collect::<Vec<_>>();
+        source_entries
+            .into_par_iter()
+            .try_for_each(|entry| -> Result<(), String> {
                 let entry_path = entry.handle_to_string()?.into_path();
 
                 let parts = self.source_path.components().count();
@@ -100,7 +106,12 @@ impl Database {
                 });
 
                 let entry_mirror = entry_mirror;
-                mirror_list.insert(entry_mirror.clone());
+                {
+                    let mut mirror_list = mirror_list
+                        .lock()
+                        .map_err(|e| format!("Failed to lock mirror list: {e}"))?;
+                    mirror_list.insert(entry_mirror.clone());
+                }
 
                 if entry_path.is_dir() {
                     create_dir_all(&entry_mirror).map_err(|e| {
@@ -111,9 +122,23 @@ impl Database {
                         )
                     })?;
                 } else if entry_path.is_file() {
+                    create_dir_all(entry_mirror.parent().ok_or("Failed to get file parent")?)
+                        .map_err(|e| {
+                            format!(
+                                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
+                                entry_mirror.display(),
+                                entry_path.display()
+                            )
+                        })?;
+
                     let digest = hash_file(&entry_path)?;
 
-                    new_hashes.insert(entry_path.clone(), digest.clone());
+                    {
+                        let mut new_hashes = new_hashes
+                            .lock()
+                            .map_err(|e| format!("Failed to lock new hashes: {e}"))?;
+                        new_hashes.insert(entry_path.clone(), digest.clone());
+                    }
                     if let Some(prev_hash) = self.hashes.get(&entry_path) {
                         if entry_mirror.exists() {
                             if &digest == prev_hash {
@@ -158,11 +183,17 @@ impl Database {
                 }
 
                 Ok(())
-            },
-        )?;
+            })?;
 
-        self.hashes = new_hashes;
+        self.hashes = new_hashes
+            .lock()
+            .map_err(|e| format!("Failed to lock new hashes for database: {e}"))?
+            .clone();
         self.save()?;
+
+        let mirror_list = mirror_list
+            .lock()
+            .map_err(|e| format!("Failed to lock mirror list for cleanup: {e}"))?;
 
         // Clean up orphaned mirror files
         WalkDir::new(&self.mirror_path).into_iter().try_for_each(
