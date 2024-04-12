@@ -32,6 +32,5 @@ Refer to [the example filter](example_filter.sh) for specifics.
 
 ## Todo
 
-- Rayon parallelism
+- Tech debt
 - Use timestamp comparisons before hash comparisons on database
-- Support more customisation
