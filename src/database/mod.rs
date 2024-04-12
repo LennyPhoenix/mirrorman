@@ -11,11 +11,13 @@ use std::{
     fs::{copy, create_dir_all, File},
     io::Read,
     path::{Path, PathBuf},
+    process::Command,
 };
 use walkdir::WalkDir;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
+    filters: Vec<String>,
     source_path: PathBuf,
     mirror_path: PathBuf,
     // Key = Source, Value = Hash
@@ -23,12 +25,13 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(source_path: PathBuf, mirror_path: PathBuf) -> Self {
+    pub fn new(source_path: PathBuf, mirror_path: PathBuf, filters: Vec<String>) -> Self {
         let hashes = BTreeMap::new();
         Self {
             source_path,
             mirror_path,
             hashes,
+            filters,
         }
     }
 
@@ -63,10 +66,40 @@ impl Database {
                 let entry_path = entry.handle_to_string()?.into_path();
 
                 let parts = self.source_path.components().count();
-                let entry_mirror = self
+                let mut entry_mirror = self
                     .mirror_path
                     .join(entry_path.components().skip(parts).collect::<PathBuf>());
 
+                let filter = entry_path.extension().and_then(|ext| {
+                    self.filters.iter().find(|filter| {
+                        match Command::new(filter).arg("ext").arg(ext).output() {
+                            Ok(output) => {
+                                if output.status.success() {
+                                    let new_extension = match String::from_utf8(output.stdout) {
+                                        Ok(output) => output.trim().to_owned(),
+                                        Err(e) => {
+                                            println!(
+                                                "Failed to parse filter `{0}` output: {e}",
+                                                filter
+                                            );
+                                            return false;
+                                        }
+                                    };
+                                    entry_mirror.set_extension(&new_extension);
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            Err(e) => {
+                                println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
+                                false
+                            }
+                        }
+                    })
+                });
+
+                let entry_mirror = entry_mirror;
                 mirror_list.insert(entry_mirror.clone());
 
                 if entry_path.is_dir() {
@@ -97,13 +130,31 @@ impl Database {
                         println!("New file `{0}`...", entry_path.display());
                     }
 
-                    copy(&entry_path, &entry_mirror).map_err(|e| {
-                        format!(
-                            "Failed to copy source `{0}` to mirror `{1}`: {e}",
-                            entry_path.display(),
-                            entry_mirror.display()
-                        )
-                    })?;
+                    let res = filter.is_some_and(|filter| {
+                        match Command::new(filter)
+                            .arg("run")
+                            .arg(&entry_path)
+                            .arg(&entry_mirror)
+                            .status()
+                        {
+                            Ok(status) => status.success(),
+                            Err(e) => {
+                                println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
+                                false
+                            }
+                        }
+                    });
+
+                    // No Filter / Filter Failed
+                    if !res {
+                        copy(&entry_path, &entry_mirror).map_err(|e| {
+                            format!(
+                                "Failed to copy source `{0}` to mirror `{1}`: {e}",
+                                entry_path.display(),
+                                entry_mirror.display()
+                            )
+                        })?;
+                    }
                 }
 
                 Ok(())

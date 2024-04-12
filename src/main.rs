@@ -19,11 +19,12 @@ pub enum Commands {
     Init {
         source_directory: PathBuf,
         mirror_directory: PathBuf,
+        filters: Vec<String>,
     },
     Sync,
 }
 
-fn init(source: &Path, mirror: &Path) -> Result<(), String> {
+fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<(), String> {
     if !source.exists() {
         return Err(format!(
             "Invalid source directory, `{0}` does not exist.",
@@ -39,7 +40,7 @@ fn init(source: &Path, mirror: &Path) -> Result<(), String> {
         ));
     }
 
-    let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf());
+    let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf(), filters.to_vec());
     database.sync()?;
 
     Ok(())
@@ -68,7 +69,8 @@ fn main() -> Result<(), String> {
         Commands::Init {
             source_directory,
             mirror_directory,
-        } => init(&source_directory, &mirror_directory),
+            filters,
+        } => init(&source_directory, &mirror_directory, &filters),
         Commands::Sync => sync(),
     }
 }
