@@ -43,6 +43,13 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<(), String> 
     let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf(), filters.to_vec());
     database.sync()?;
 
+    println!(
+        "`{1}` mirrored at `{2}` successfully! (Database created at `{0}`)",
+        database_path.display(),
+        source.display(),
+        mirror.display()
+    );
+
     Ok(())
 }
 
@@ -58,6 +65,8 @@ fn sync() -> Result<(), String> {
             }
             Ok(())
         })?;
+
+    println!("Sync complete!");
 
     Ok(())
 }
