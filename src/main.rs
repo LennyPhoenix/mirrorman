@@ -40,6 +40,16 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<(), String> 
         ));
     }
 
+    if mirror.exists()
+        && mirror
+            .read_dir()
+            .map_err(|e| format!("Failed to inspect mirror directory: {e}"))?
+            .next()
+            .is_some()
+    {
+        return Err(format!("Mirror directory `{0}` is not empty, mirroring would erase all existing files. Mirrorman will now abort, if you really wish to proceed (are you sure?) please clear the directory and try again.", mirror.display()));
+    }
+
     let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf(), filters.to_vec());
     database.sync()?;
 
