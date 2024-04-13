@@ -3,12 +3,10 @@ mod path;
 
 pub use hash::*;
 pub use path::*;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{
-    filter::{find_filter_for_entry, run_filter_for_entry},
-    walkdir_result_extension::WalkdirResultExtension,
-};
+use crate::filter::{find_filter_for_entry, run_filter_for_entry};
+use anyhow::{Context, Result};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -39,16 +37,16 @@ impl Database {
         }
     }
 
-    pub fn load(file_path: &Path) -> Result<Self, String> {
+    pub fn load(file_path: &Path) -> Result<Self> {
         let mut file = File::open(file_path)
-            .map_err(|e| format!("Failed to open {0} for writing: {e}", file_path.display()))?;
+            .with_context(|| format!("Failed to open {0} for writing", file_path.display()))?;
         let mut buf = String::new();
         file.read_to_string(&mut buf)
-            .map_err(|e| format!("Failed to read file {0}: {e}", file_path.display()))?;
-        serde_json::from_str(&buf).map_err(|e| format!("Failed to read database from file: {e}"))
+            .with_context(|| format!("Failed to read file {0}", file_path.display()))?;
+        serde_json::from_str(&buf).with_context(|| "Failed to read database from file")
     }
 
-    pub fn sync(&mut self) -> Result<(), String> {
+    pub fn sync(&mut self) -> Result<()> {
         let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
         let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
 
@@ -58,8 +56,8 @@ impl Database {
             .collect::<Vec<_>>();
         source_entries
             .into_par_iter()
-            .try_for_each(|entry| -> Result<(), String> {
-                let source_entry = entry.handle_to_string()?.into_path();
+            .try_for_each(|entry| -> Result<()> {
+                let source_entry = entry?.into_path();
 
                 let parts = self.source_path.components().count();
 
@@ -70,9 +68,10 @@ impl Database {
                 let mirror_entry = mirror_entry;
 
                 {
-                    let mut mirror_list = mirror_list
-                        .lock()
-                        .map_err(|e| format!("Failed to lock mirror list: {e}"))?;
+                    let mut mirror_list = match mirror_list.lock() {
+                        Ok(mirror_list) => mirror_list,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
                     mirror_list.insert(mirror_entry.clone());
                 }
 
@@ -90,29 +89,37 @@ impl Database {
                 Ok(())
             })?;
 
-        self.hashes = new_hashes
-            .lock()
-            .map_err(|e| format!("Failed to lock new hashes for database: {e}"))?
+        self.hashes = match new_hashes.lock() {
+                Ok(new_hashes) => new_hashes,
+                Err(poisoned) => {
+                    println!("One or more threads panicked, hash list may be incomplete. Consider (re-)running `sync`...");
+                    poisoned.into_inner()
+                }
+            }
             .clone();
         self.save()?;
 
-        let mirror_list = mirror_list
-            .lock()
-            .map_err(|e| format!("Failed to lock mirror list for cleanup: {e}"))?;
+        let mirror_list = match mirror_list.lock() {
+            Ok(mirror_list) => mirror_list,
+            Err(poisoned) => {
+                println!("One or more threads panicked, mirror list may be incomplete. Consider (re-)running `sync`...");
+                poisoned.into_inner()
+            }
+        };
 
         self.cleanup(&mirror_list)
     }
 
-    fn save(&self) -> Result<(), String> {
+    fn save(&self) -> Result<()> {
         let database_path = database_path_from_mirror(&self.mirror_path)?;
         self.write_to_file(&database_path)
     }
 
-    fn write_to_file(&self, file_path: &Path) -> Result<(), String> {
+    fn write_to_file(&self, file_path: &Path) -> Result<()> {
         let file = File::create(file_path)
-            .map_err(|e| format!("Failed to open {0} for writing: {e}", file_path.display()))?;
+            .with_context(|| format!("Failed to open {0} for writing", file_path.display()))?;
         serde_json::to_writer_pretty(file, self)
-            .map_err(|e| format!("Failed to format database to json: {e}"))
+            .with_context(|| "Failed to format database to json")
     }
 
     fn handle_file_entry(
@@ -121,10 +128,15 @@ impl Database {
         filter: Option<&String>,
         source: &Path,
         mirror: &Path,
-    ) -> Result<(), String> {
-        create_dir_all(mirror.parent().ok_or("Failed to get file parent")?).map_err(|e| {
+    ) -> Result<()> {
+        create_dir_all(
+            mirror
+                .parent()
+                .with_context(|| "Failed to get file parent")?,
+        )
+        .with_context(|| {
             format!(
-                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
+                "Failed to create mirror directory ({0}) for entry `{1}`",
                 mirror.display(),
                 source.display()
             )
@@ -133,9 +145,10 @@ impl Database {
         let digest = hash_file(source)?;
 
         {
-            let mut hashes = hashes
-                .lock()
-                .map_err(|e| format!("Failed to lock new hashes: {e}"))?;
+            let mut hashes = match hashes.lock() {
+                Ok(hashes) => hashes,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             hashes.insert(source.to_path_buf(), digest.clone());
         }
         if let Some(prev_hash) = self.hashes.get(source) {
@@ -159,9 +172,9 @@ impl Database {
                 run_filter_for_entry(source, mirror, filter);
             }
             None => {
-                copy(source, mirror).map_err(|e| {
+                copy(source, mirror).with_context(|| {
                     format!(
-                        "Failed to copy source `{0}` to mirror `{1}`: {e}",
+                        "Failed to copy source `{0}` to mirror `{1}`",
                         source.display(),
                         mirror.display()
                     )
@@ -172,34 +185,31 @@ impl Database {
         Ok(())
     }
 
-    fn handle_dir_entry(&self, source: &Path, mirror: &Path) -> Result<(), String> {
-        create_dir_all(source).map_err(|e| {
+    fn handle_dir_entry(&self, source: &Path, mirror: &Path) -> Result<()> {
+        create_dir_all(source).with_context(|| {
             format!(
-                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
+                "Failed to create mirror directory ({0}) for entry `{1}`",
                 mirror.display(),
                 source.display()
             )
         })
     }
 
-    fn cleanup(&self, mirror_list: &BTreeSet<PathBuf>) -> Result<(), String> {
+    fn cleanup(&self, mirror_list: &BTreeSet<PathBuf>) -> Result<()> {
         WalkDir::new(&self.mirror_path)
             .into_iter()
-            .try_for_each(|entry| -> Result<(), String> {
-                let entry_path = entry.handle_to_string()?.into_path();
+            .try_for_each(|entry| -> Result<()> {
+                let entry_path = entry?.into_path();
 
                 if !mirror_list.contains(&entry_path) {
                     println!("Removing `{0}`...", entry_path.display());
                     if entry_path.is_dir() {
-                        std::fs::remove_dir_all(&entry_path).map_err(|e| {
-                            format!(
-                                "Failed to remove directory `{0}`: {e}",
-                                entry_path.display()
-                            )
+                        std::fs::remove_dir_all(&entry_path).with_context(|| {
+                            format!("Failed to remove directory `{0}`", entry_path.display())
                         })?;
                     } else {
-                        std::fs::remove_file(&entry_path).map_err(|e| {
-                            format!("Failed to remove file `{0}`: {e}", entry_path.display())
+                        std::fs::remove_file(&entry_path).with_context(|| {
+                            format!("Failed to remove file `{0}`", entry_path.display())
                         })?;
                     }
                 }

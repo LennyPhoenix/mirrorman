@@ -1,12 +1,11 @@
 mod database;
 mod filter;
-mod walkdir_result_extension;
 
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use database::{database_path_from_mirror, Database};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use walkdir_result_extension::WalkdirResultExtension;
 
 #[derive(Parser)]
 #[command(version)]
@@ -25,30 +24,30 @@ pub enum Commands {
     Sync,
 }
 
-fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<(), String> {
+fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
     if !source.exists() {
-        return Err(format!(
+        bail!(
             "Invalid source directory, `{0}` does not exist.",
             source.display()
-        ));
+        )
     }
 
     let database_path = database_path_from_mirror(mirror)?;
     if database_path.exists() {
-        return Err(format!(
+        bail!(
             "Database file `{0}` already exists. Run `sync` instead.",
             database_path.display(),
-        ));
+        )
     }
 
     if mirror.exists()
         && mirror
             .read_dir()
-            .map_err(|e| format!("Failed to inspect mirror directory: {e}"))?
+            .with_context(|| "Failed to inspect mirror directory")?
             .next()
             .is_some()
     {
-        return Err(format!("Mirror directory `{0}` is not empty, mirroring would erase all existing files. Mirrorman will now abort, if you really wish to proceed (are you sure?) please clear the directory and try again.", mirror.display()));
+        bail!("Mirror directory `{0}` is not empty, mirroring would erase all existing files. Mirrorman will now abort, if you really wish to proceed (are you sure?) please clear the directory and try again.", mirror.display())
     }
 
     let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf(), filters.to_vec());
@@ -64,12 +63,12 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<(), String> 
     Ok(())
 }
 
-fn sync() -> Result<(), String> {
+fn sync() -> Result<()> {
     WalkDir::new(Path::new("."))
         .max_depth(1)
         .into_iter()
-        .try_for_each(|entry| -> Result<(), String> {
-            let entry_path = entry.handle_to_string()?.into_path();
+        .try_for_each(|entry| -> Result<()> {
+            let entry_path = entry?.into_path();
             if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
                 let mut database = Database::load(&entry_path)?;
                 database.sync()?;
@@ -82,7 +81,7 @@ fn sync() -> Result<(), String> {
     Ok(())
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<()> {
     let args = Cli::parse();
 
     match args.cmd {
