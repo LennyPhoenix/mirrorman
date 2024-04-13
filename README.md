@@ -32,5 +32,6 @@ Refer to [the example filter](example_filter.sh) for specifics.
 
 ## Todo
 
-- Tech debt
+- Use a better logging solution
+- Use a nicer error solution
 - Use timestamp comparisons before hash comparisons on database

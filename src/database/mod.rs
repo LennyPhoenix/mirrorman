@@ -5,14 +5,16 @@ pub use hash::*;
 pub use path::*;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::walkdir_result_extension::WalkdirResultExtension;
+use crate::{
+    filter::{find_filter_for_entry, run_filter_for_entry},
+    walkdir_result_extension::WalkdirResultExtension,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{copy, create_dir_all, File},
     io::Read,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, Mutex},
 };
 use walkdir::WalkDir;
@@ -37,11 +39,6 @@ impl Database {
         }
     }
 
-    fn save(&self) -> Result<(), String> {
-        let database_path = database_path_from_mirror(&self.mirror_path)?;
-        self.write_to_file(&database_path)
-    }
-
     pub fn load(file_path: &Path) -> Result<Self, String> {
         let mut file = File::open(file_path)
             .map_err(|e| format!("Failed to open {0} for writing: {e}", file_path.display()))?;
@@ -49,13 +46,6 @@ impl Database {
         file.read_to_string(&mut buf)
             .map_err(|e| format!("Failed to read file {0}: {e}", file_path.display()))?;
         serde_json::from_str(&buf).map_err(|e| format!("Failed to read database from file: {e}"))
-    }
-
-    fn write_to_file(&self, file_path: &Path) -> Result<(), String> {
-        let file = File::create(file_path)
-            .map_err(|e| format!("Failed to open {0} for writing: {e}", file_path.display()))?;
-        serde_json::to_writer_pretty(file, self)
-            .map_err(|e| format!("Failed to format database to json: {e}"))
     }
 
     pub fn sync(&mut self) -> Result<(), String> {
@@ -69,117 +59,32 @@ impl Database {
         source_entries
             .into_par_iter()
             .try_for_each(|entry| -> Result<(), String> {
-                let entry_path = entry.handle_to_string()?.into_path();
+                let source_entry = entry.handle_to_string()?.into_path();
 
                 let parts = self.source_path.components().count();
-                let mut entry_mirror = self
+
+                let mut mirror_entry = self
                     .mirror_path
-                    .join(entry_path.components().skip(parts).collect::<PathBuf>());
+                    .join(source_entry.components().skip(parts).collect::<PathBuf>());
+                let filter = find_filter_for_entry(&source_entry, &mut mirror_entry, &self.filters);
+                let mirror_entry = mirror_entry;
 
-                let filter = entry_path.extension().and_then(|ext| {
-                    self.filters.iter().find(|filter| {
-                        match Command::new(filter).arg("ext").arg(ext).output() {
-                            Ok(output) => {
-                                if output.status.success() {
-                                    let new_extension = match String::from_utf8(output.stdout) {
-                                        Ok(output) => output.trim().to_owned(),
-                                        Err(e) => {
-                                            println!(
-                                                "Failed to parse filter `{0}` output: {e}",
-                                                filter
-                                            );
-                                            return false;
-                                        }
-                                    };
-                                    entry_mirror.set_extension(&new_extension);
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-                            Err(e) => {
-                                println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
-                                false
-                            }
-                        }
-                    })
-                });
-
-                let entry_mirror = entry_mirror;
                 {
                     let mut mirror_list = mirror_list
                         .lock()
                         .map_err(|e| format!("Failed to lock mirror list: {e}"))?;
-                    mirror_list.insert(entry_mirror.clone());
+                    mirror_list.insert(mirror_entry.clone());
                 }
 
-                if entry_path.is_dir() {
-                    create_dir_all(&entry_mirror).map_err(|e| {
-                        format!(
-                            "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
-                            entry_mirror.display(),
-                            entry_path.display()
-                        )
-                    })?;
-                } else if entry_path.is_file() {
-                    create_dir_all(entry_mirror.parent().ok_or("Failed to get file parent")?)
-                        .map_err(|e| {
-                            format!(
-                                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
-                                entry_mirror.display(),
-                                entry_path.display()
-                            )
-                        })?;
-
-                    let digest = hash_file(&entry_path)?;
-
-                    {
-                        let mut new_hashes = new_hashes
-                            .lock()
-                            .map_err(|e| format!("Failed to lock new hashes: {e}"))?;
-                        new_hashes.insert(entry_path.clone(), digest.clone());
-                    }
-                    if let Some(prev_hash) = self.hashes.get(&entry_path) {
-                        if entry_mirror.exists() {
-                            if &digest == prev_hash {
-                                println!("File `{0}` unchanged, skipping...", entry_path.display());
-                                return Ok(());
-                            } else {
-                                println!("File `{0}` changed...", entry_path.display());
-                            }
-                        } else {
-                            println!("New file `{0}`...", entry_path.display());
-                            // TODO: Chain if-let &&
-                        }
-                    } else {
-                        println!("New file `{0}`...", entry_path.display());
-                    }
-
-                    let res = filter.is_some_and(|filter| {
-                        match Command::new(filter)
-                            .arg("run")
-                            .arg(&entry_path)
-                            .arg(&entry_mirror)
-                            .status()
-                        {
-                            Ok(status) => status.success(),
-                            Err(e) => {
-                                println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
-                                false
-                            }
-                        }
-                    });
-
-                    // No Filter / Filter Failed
-                    if !res {
-                        copy(&entry_path, &entry_mirror).map_err(|e| {
-                            format!(
-                                "Failed to copy source `{0}` to mirror `{1}`: {e}",
-                                entry_path.display(),
-                                entry_mirror.display()
-                            )
-                        })?;
-                    }
+                if source_entry.is_dir() {
+                    self.handle_dir_entry(&source_entry, &mirror_entry)?;
+                } else if source_entry.is_file() {
+                    self.handle_file_entry(
+                        new_hashes.clone(),
+                        filter,
+                        &source_entry,
+                        &mirror_entry,
+                    )?;
                 }
 
                 Ok(())
@@ -195,9 +100,92 @@ impl Database {
             .lock()
             .map_err(|e| format!("Failed to lock mirror list for cleanup: {e}"))?;
 
-        // Clean up orphaned mirror files
-        WalkDir::new(&self.mirror_path).into_iter().try_for_each(
-            |entry| -> Result<(), String> {
+        self.cleanup(&mirror_list)
+    }
+
+    fn save(&self) -> Result<(), String> {
+        let database_path = database_path_from_mirror(&self.mirror_path)?;
+        self.write_to_file(&database_path)
+    }
+
+    fn write_to_file(&self, file_path: &Path) -> Result<(), String> {
+        let file = File::create(file_path)
+            .map_err(|e| format!("Failed to open {0} for writing: {e}", file_path.display()))?;
+        serde_json::to_writer_pretty(file, self)
+            .map_err(|e| format!("Failed to format database to json: {e}"))
+    }
+
+    fn handle_file_entry(
+        &self,
+        hashes: Arc<Mutex<BTreeMap<PathBuf, String>>>,
+        filter: Option<&String>,
+        source: &Path,
+        mirror: &Path,
+    ) -> Result<(), String> {
+        create_dir_all(mirror.parent().ok_or("Failed to get file parent")?).map_err(|e| {
+            format!(
+                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
+                mirror.display(),
+                source.display()
+            )
+        })?;
+
+        let digest = hash_file(source)?;
+
+        {
+            let mut hashes = hashes
+                .lock()
+                .map_err(|e| format!("Failed to lock new hashes: {e}"))?;
+            hashes.insert(source.to_path_buf(), digest.clone());
+        }
+        if let Some(prev_hash) = self.hashes.get(source) {
+            if mirror.exists() {
+                if &digest == prev_hash {
+                    println!("File `{0}` unchanged, skipping...", source.display());
+                    return Ok(());
+                } else {
+                    println!("File `{0}` changed...", source.display());
+                }
+            } else {
+                println!("New file `{0}`...", source.display());
+                // TODO: Chain if-let &&
+            }
+        } else {
+            println!("New file `{0}`...", source.display());
+        }
+
+        match filter {
+            Some(filter) => {
+                run_filter_for_entry(source, mirror, filter);
+            }
+            None => {
+                copy(source, mirror).map_err(|e| {
+                    format!(
+                        "Failed to copy source `{0}` to mirror `{1}`: {e}",
+                        source.display(),
+                        mirror.display()
+                    )
+                })?;
+            }
+        };
+
+        Ok(())
+    }
+
+    fn handle_dir_entry(&self, source: &Path, mirror: &Path) -> Result<(), String> {
+        create_dir_all(source).map_err(|e| {
+            format!(
+                "Failed to create mirror directory ({0}) for entry `{1}`: {e}",
+                mirror.display(),
+                source.display()
+            )
+        })
+    }
+
+    fn cleanup(&self, mirror_list: &BTreeSet<PathBuf>) -> Result<(), String> {
+        WalkDir::new(&self.mirror_path)
+            .into_iter()
+            .try_for_each(|entry| -> Result<(), String> {
                 let entry_path = entry.handle_to_string()?.into_path();
 
                 if !mirror_list.contains(&entry_path) {
@@ -217,9 +205,6 @@ impl Database {
                 }
 
                 Ok(())
-            },
-        )?;
-
-        Ok(())
+            })
     }
 }

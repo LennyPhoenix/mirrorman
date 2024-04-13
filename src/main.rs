@@ -1,4 +1,5 @@
 mod database;
+mod filter;
 mod walkdir_result_extension;
 
 use clap::{Parser, Subcommand};
