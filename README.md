@@ -32,6 +32,5 @@ Refer to [the example filter](example_filter.sh) for specifics.
 
 ## Todo
 
-- Use a better logging solution
-- Use a nicer error solution
 - Use timestamp comparisons before hash comparisons on database
+- Better way of a filter ignoring a file, error codes should ideally be used for errors not passing info

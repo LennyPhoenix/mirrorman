@@ -12,7 +12,7 @@ pub fn run_filter_for_entry(source_entry: &Path, mirror_entry: &Path, filter: &s
     {
         Ok(status) => {
             if !status.success() {
-                println!(
+                log::error!(
                     "Filter `{0}` failed for `{1}`, skipping...",
                     filter,
                     source_entry.display()
@@ -20,7 +20,7 @@ pub fn run_filter_for_entry(source_entry: &Path, mirror_entry: &Path, filter: &s
             }
         }
         Err(e) => {
-            println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
+            log::error!("Failed to invoke filter `{0}`, skipping: {e}", filter);
         }
     }
 }
@@ -38,7 +38,7 @@ pub fn find_filter_for_entry<'a>(
                         let new_extension = match String::from_utf8(output.stdout) {
                             Ok(output) => output.trim().to_owned(),
                             Err(e) => {
-                                println!("Failed to parse filter `{0}` output: {e}", filter);
+                                log::error!("Failed to parse filter `{0}` output: {e}", filter);
                                 return false;
                             }
                         };
@@ -49,7 +49,7 @@ pub fn find_filter_for_entry<'a>(
                     }
                 }
                 Err(e) => {
-                    println!("Failed to invoke filter `{0}`, skipping: {e}", filter);
+                    log::error!("Failed to invoke filter `{0}`, skipping: {e}", filter);
                     false
                 }
             },

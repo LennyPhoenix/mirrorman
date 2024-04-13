@@ -51,6 +51,10 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
     }
 
     let mut database = Database::new(source.to_path_buf(), mirror.to_path_buf(), filters.to_vec());
+    println!(
+        "Beginning first sync of database `{0}`...",
+        database_path.display()
+    );
     database.sync()?;
 
     println!(
@@ -64,6 +68,8 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
 }
 
 fn sync() -> Result<()> {
+    pretty_env_logger::init();
+
     WalkDir::new(Path::new("."))
         .max_depth(1)
         .into_iter()
@@ -71,6 +77,7 @@ fn sync() -> Result<()> {
             let entry_path = entry?.into_path();
             if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
                 let mut database = Database::load(&entry_path)?;
+                println!("Syncing database `{0}`...", entry_path.display());
                 database.sync()?;
             }
             Ok(())

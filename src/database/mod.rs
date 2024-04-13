@@ -92,7 +92,7 @@ impl Database {
         self.hashes = match new_hashes.lock() {
                 Ok(new_hashes) => new_hashes,
                 Err(poisoned) => {
-                    println!("One or more threads panicked, hash list may be incomplete. Consider (re-)running `sync`...");
+                    log::warn!("One or more threads panicked, hash list may be incomplete. Consider (re-)running `sync`...");
                     poisoned.into_inner()
                 }
             }
@@ -102,7 +102,7 @@ impl Database {
         let mirror_list = match mirror_list.lock() {
             Ok(mirror_list) => mirror_list,
             Err(poisoned) => {
-                println!("One or more threads panicked, mirror list may be incomplete. Consider (re-)running `sync`...");
+                log::warn!("One or more threads panicked, mirror list may be incomplete. Consider (re-)running `sync`...");
                 poisoned.into_inner()
             }
         };
@@ -154,17 +154,17 @@ impl Database {
         if let Some(prev_hash) = self.hashes.get(source) {
             if mirror.exists() {
                 if &digest == prev_hash {
-                    println!("File `{0}` unchanged, skipping...", source.display());
+                    log::info!("File `{0}` unchanged, skipping...", source.display());
                     return Ok(());
                 } else {
-                    println!("File `{0}` changed...", source.display());
+                    log::info!("File `{0}` changed...", source.display());
                 }
             } else {
-                println!("New file `{0}`...", source.display());
+                log::info!("New file `{0}`...", source.display());
                 // TODO: Chain if-let &&
             }
         } else {
-            println!("New file `{0}`...", source.display());
+            log::info!("New file `{0}`...", source.display());
         }
 
         match filter {
@@ -202,7 +202,7 @@ impl Database {
                 let entry_path = entry?.into_path();
 
                 if !mirror_list.contains(&entry_path) {
-                    println!("Removing `{0}`...", entry_path.display());
+                    log::info!("Removing `{0}`...", entry_path.display());
                     if entry_path.is_dir() {
                         std::fs::remove_dir_all(&entry_path).with_context(|| {
                             format!("Failed to remove directory `{0}`", entry_path.display())
