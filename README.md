@@ -4,7 +4,7 @@
 
 You might use this for:
 
-- Converting your lossless audio library to smaller MP3s to be taken on the go
+- Converting your lossless audio library to smaller MP3s to be taken on the go (see <example_filter.sh>)
 - Turning your SD card full of raw images into the things normal people can view
 
 ## Usage
