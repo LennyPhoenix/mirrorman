@@ -1,6 +1,6 @@
 [package]
 name = "mirrorman"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 description = "Media conversion and mirror tool"
 readme = "README.md"
