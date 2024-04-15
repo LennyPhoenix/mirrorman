@@ -4,7 +4,7 @@
 
 You might use this for:
 
-- Converting your lossless audio library to smaller MP3s to be taken on the go (see <example_filter.sh>)
+- Converting your lossless audio library to smaller MP3s to be taken on the go (see [`example_filter.sh`](./example_filter.sh))
 - Turning your SD card full of raw images into the things normal people can view
 
 ## Usage
@@ -28,7 +28,7 @@ A filter is just an executable program that has two operation modes:
 
 It's really that simple!
 
-Refer to [the example filter](example_filter.sh) for specifics.
+Refer to [the example filter](./example_filter.sh) for specifics.
 
 ## Todo
 
