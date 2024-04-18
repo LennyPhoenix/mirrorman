@@ -5,6 +5,7 @@ edition = "2021"
 description = "Media conversion and mirror tool"
 readme = "README.md"
 homepage = "https://github.com/LennyPhoenix/mirrorman"
+repository = "https://github.com/LennyPhoenix/mirrorman"
 license-file = "LICENSE"
 keywords = ["mirror", "sync", "convert"]
 authors = ["Lenny Critchley <LennyPhoenixC@gmail.com>"] 
