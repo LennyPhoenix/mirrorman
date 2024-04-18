@@ -12,6 +12,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{copy, create_dir_all, File},
     io::Read,
+    iter::repeat,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -49,11 +50,14 @@ impl Database {
     pub fn sync(&mut self) -> Result<()> {
         let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
         let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
+        let counter = Arc::new(Mutex::new(0_usize));
 
         // Walk source directory
         let source_entries = WalkDir::new(&self.source_path)
             .into_iter()
             .collect::<Vec<_>>();
+        let total_entries = source_entries.len();
+
         source_entries
             .into_par_iter()
             .try_for_each(|entry| -> Result<()> {
@@ -86,8 +90,12 @@ impl Database {
                     )?;
                 }
 
+                Self::log_progress(counter.clone(), total_entries);
+
                 Ok(())
             })?;
+
+        println!();
 
         self.hashes = match new_hashes.lock() {
                 Ok(new_hashes) => new_hashes,
@@ -216,5 +224,31 @@ impl Database {
 
                 Ok(())
             })
+    }
+
+    fn log_progress(counter: Arc<Mutex<usize>>, max_count: usize) {
+        let mut counter = match counter.lock() {
+            Ok(counter) => counter,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *counter += 1;
+
+        let progress = 100.0 * (*counter as f64 / max_count as f64);
+
+        const BLOCK_COUNT: usize = 20;
+        let num_blocks = 20 * *counter / max_count;
+
+        let mut bar = Vec::<char>::new();
+        bar.extend(repeat('=').take(num_blocks));
+        let count = if num_blocks < BLOCK_COUNT {
+            bar.push('>');
+            BLOCK_COUNT - num_blocks - 1
+        } else {
+            0
+        };
+        bar.extend(repeat(' ').take(count));
+        let bar = bar.into_iter().collect::<String>();
+
+        print!("\r[{bar}] {progress:.1}%");
     }
 }
