@@ -21,7 +21,9 @@ pub enum Commands {
         mirror_directory: PathBuf,
         filters: Vec<String>,
     },
-    Sync,
+    Sync {
+        databases: Vec<PathBuf>,
+    },
 }
 
 fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
@@ -67,21 +69,37 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn sync() -> Result<()> {
+fn sync_database(database_path: &Path) -> Result<()> {
+    let mut database = Database::load(database_path)?;
+    println!("Syncing database `{0}`...", database_path.display());
+    database.sync()?;
+    Ok(())
+}
+
+fn sync(databases: Vec<PathBuf>) -> Result<()> {
     pretty_env_logger::init();
 
-    WalkDir::new(Path::new("."))
-        .max_depth(1)
-        .into_iter()
-        .try_for_each(|entry| -> Result<()> {
-            let entry_path = entry?.into_path();
-            if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
-                let mut database = Database::load(&entry_path)?;
-                println!("Syncing database `{0}`...", entry_path.display());
-                database.sync()?;
+    if databases.is_empty() {
+        WalkDir::new(Path::new("."))
+            .max_depth(1)
+            .into_iter()
+            .try_for_each(|entry| -> Result<()> {
+                let entry_path = entry?.into_path();
+                if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
+                    sync_database(&entry_path)?;
+                }
+                Ok(())
+            })?;
+    } else {
+        databases.iter().try_for_each(|database_path| -> Result<()> {
+            if database_path.is_file() && database_path.extension().unwrap_or_default() == "mmdb" {
+                sync_database(database_path)?
+            } else {
+                log::error!("Invalid database file `{0}`, skipping...", database_path.display())
             }
             Ok(())
         })?;
+    }
 
     println!("Sync complete!");
 
@@ -97,6 +115,6 @@ fn main() -> Result<()> {
             mirror_directory,
             filters,
         } => init(&source_directory, &mirror_directory, &filters),
-        Commands::Sync => sync(),
+        Commands::Sync { databases } => sync(databases),
     }
 }
