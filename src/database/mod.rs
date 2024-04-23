@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{copy, create_dir_all, File},
-    io::Read,
+    io::{stdout, Read, Write},
     iter::repeat,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -90,7 +90,7 @@ impl Database {
                     )?;
                 }
 
-                Self::log_progress(counter.clone(), total_entries);
+                Self::log_progress(counter.clone(), total_entries)?;
 
                 Ok(())
             })?;
@@ -226,7 +226,7 @@ impl Database {
             })
     }
 
-    fn log_progress(counter: Arc<Mutex<usize>>, max_count: usize) {
+    fn log_progress(counter: Arc<Mutex<usize>>, max_count: usize) -> Result<()> {
         let mut counter = match counter.lock() {
             Ok(counter) => counter,
             Err(poisoned) => poisoned.into_inner(),
@@ -250,5 +250,10 @@ impl Database {
         let bar = bar.into_iter().collect::<String>();
 
         print!("\r[{bar}] {progress:.1}%");
+        stdout()
+            .flush()
+            .with_context(|| "Failed to flush output buffer")?;
+
+        Ok(())
     }
 }
