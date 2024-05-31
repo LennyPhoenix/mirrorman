@@ -1,9 +1,24 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
 
 pub fn run_filter_for_entry(source_entry: &Path, mirror_entry: &Path, filter: &str) {
+    if mirror_entry.exists() {
+        log::trace!(
+            "`{0}` is in the way, removing before running filter...",
+            mirror_entry.display()
+        );
+
+        if let Err(e) = fs::remove_file(mirror_entry) {
+            log::error!(
+                "Failed to remove destination file `{0}`: {e}",
+                mirror_entry.display()
+            );
+        }
+    }
+
     match Command::new(filter)
         .arg("run")
         .arg(source_entry)
