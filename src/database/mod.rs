@@ -162,7 +162,7 @@ impl Database {
         if let Some(prev_hash) = self.hashes.get(source) {
             if mirror.exists() {
                 if &digest == prev_hash {
-                    log::info!("File `{0}` unchanged, skipping...", source.display());
+                    log::trace!("File `{0}` unchanged, skipping...", source.display());
                     return Ok(());
                 } else {
                     log::info!("File `{0}` changed...", source.display());
