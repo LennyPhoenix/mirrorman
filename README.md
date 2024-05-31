@@ -5,6 +5,7 @@
 You might use this for:
 
 - Converting your lossless audio library to smaller MP3s to be taken on the go (see [`example_filter.sh`](./example_filter.sh))
+- Upscaling footage from your super-duper old video camera and converting into a reasonable format
 - Turning your SD card full of raw images into the things normal people can view
 
 ## Usage
