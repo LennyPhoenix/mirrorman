@@ -16,14 +16,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Initialise a new database, taking files from `source_directory`, and copying them to
+    /// `mirror_directory` after passing them through the given `filters`
     Init {
+        /// Directory to take files and directory structure from when mirroring
         source_directory: PathBuf,
+        /// Directory to mirror to, all files will be copied or filtered to here
         mirror_directory: PathBuf,
+        /// A set of executable filter programs
         filters: Vec<String>,
     },
+    /// Syncs any databases (`.mmdb` files) in the current directory, or optionally one or many specific databases
     Sync {
+        /// An optional set of databases to explicitly sync
         databases: Vec<PathBuf>,
     },
+    /// Outputs the example filter
+    ExampleFilter,
 }
 
 fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
@@ -120,6 +129,11 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+fn example_filter() -> Result<()> {
+    println!("{}", include_str!("../example_filter.sh"));
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
@@ -130,5 +144,6 @@ fn main() -> Result<()> {
             filters,
         } => init(&source_directory, &mirror_directory, &filters),
         Commands::Sync { databases } => sync(databases),
+        Commands::ExampleFilter => example_filter(),
     }
 }
