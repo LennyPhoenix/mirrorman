@@ -80,6 +80,7 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
     pretty_env_logger::init();
 
     if databases.is_empty() {
+        let mut any_db = false;
         WalkDir::new(Path::new("."))
             .max_depth(1)
             .into_iter()
@@ -87,18 +88,31 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
                 let entry_path = entry?.into_path();
                 if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
                     sync_database(&entry_path)?;
+                    any_db = true;
                 }
                 Ok(())
             })?;
+
+        if !any_db {
+            println!("No databases were found in the current directory to sync, are you in the right place?");
+            println!("[hint] I'm looking for `.mmdb` files...");
+        }
     } else {
-        databases.iter().try_for_each(|database_path| -> Result<()> {
-            if database_path.is_file() && database_path.extension().unwrap_or_default() == "mmdb" {
-                sync_database(database_path)?
-            } else {
-                log::error!("Invalid database file `{0}`, skipping...", database_path.display())
-            }
-            Ok(())
-        })?;
+        databases
+            .iter()
+            .try_for_each(|database_path| -> Result<()> {
+                if database_path.is_file()
+                    && database_path.extension().unwrap_or_default() == "mmdb"
+                {
+                    sync_database(database_path)?
+                } else {
+                    log::error!(
+                        "Invalid database file `{0}`, skipping...",
+                        database_path.display()
+                    )
+                }
+                Ok(())
+            })?;
     }
 
     println!("Sync complete!");
