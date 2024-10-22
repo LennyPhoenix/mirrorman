@@ -30,6 +30,7 @@ pub struct Database {
 impl Database {
     pub fn new(source_path: PathBuf, mirror_path: PathBuf, filters: Vec<String>) -> Self {
         let hashes = BTreeMap::new();
+
         Self {
             source_path,
             mirror_path,
@@ -47,7 +48,7 @@ impl Database {
         serde_json::from_str(&buf).with_context(|| "Failed to read database from file")
     }
 
-    pub fn sync(&mut self) -> Result<()> {
+    pub fn sync(&mut self, database_path: &Path) -> Result<()> {
         let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
         let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
         let counter = Arc::new(Mutex::new(0_usize));
@@ -105,7 +106,7 @@ impl Database {
                 }
             }
             .clone();
-        self.save()?;
+        self.save(database_path)?;
 
         let mirror_list = match mirror_list.lock() {
             Ok(mirror_list) => mirror_list,
@@ -118,9 +119,8 @@ impl Database {
         self.cleanup(&mirror_list)
     }
 
-    fn save(&self) -> Result<()> {
-        let database_path = database_path_from_mirror(&self.mirror_path)?;
-        self.write_to_file(&database_path)
+    fn save(&self, database_path: &Path) -> Result<()> {
+        self.write_to_file(database_path)
     }
 
     fn write_to_file(&self, file_path: &Path) -> Result<()> {

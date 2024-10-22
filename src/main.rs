@@ -66,7 +66,7 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
         "Beginning first sync of database `{0}`...",
         database_path.display()
     );
-    database.sync()?;
+    database.sync(&database_path)?;
 
     println!(
         "`{1}` mirrored at `{2}` successfully! (Database created at `{0}`)",
@@ -81,7 +81,7 @@ fn init(source: &Path, mirror: &Path, filters: &[String]) -> Result<()> {
 fn sync_database(database_path: &Path) -> Result<()> {
     let mut database = Database::load(database_path)?;
     println!("Syncing database `{0}`...", database_path.display());
-    database.sync()?;
+    database.sync(database_path)?;
     Ok(())
 }
 
@@ -91,7 +91,7 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
     if databases.is_empty() {
         let mut any_db = false;
         WalkDir::new(Path::new("."))
-            .max_depth(1)
+            .max_depth(1) // need to add "prefix" support to be able to remove this
             .into_iter()
             .try_for_each(|entry| -> Result<()> {
                 let entry_path = entry?.into_path();
