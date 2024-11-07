@@ -95,7 +95,13 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
             .try_for_each(|entry| -> Result<()> {
                 let entry_path = entry?.into_path();
                 if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
-                    sync_database(&entry_path)?;
+                    if let Err(e) = sync_database(&entry_path) {
+                        log::error!(
+                            "Failed to syncronise database `{0}`: {e}",
+                            entry_path.display()
+                        );
+                    }
+
                     any_db = true;
                 }
                 Ok(())
