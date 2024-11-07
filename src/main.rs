@@ -91,7 +91,6 @@ fn sync(databases: Vec<PathBuf>) -> Result<()> {
     if databases.is_empty() {
         let mut any_db = false;
         WalkDir::new(Path::new("."))
-            .max_depth(1) // need to add "prefix" support to be able to remove this
             .into_iter()
             .try_for_each(|entry| -> Result<()> {
                 let entry_path = entry?.into_path();

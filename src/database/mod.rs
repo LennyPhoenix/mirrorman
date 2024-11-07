@@ -49,6 +49,17 @@ impl Database {
     }
 
     pub fn sync(&mut self, database_path: &Path) -> Result<()> {
+        let old_dir = std::env::current_dir()?;
+        let database_folder = database_path
+            .parent()
+            .context("database file had no parent")?;
+        let database_filename = PathBuf::from(
+            database_path
+                .file_name()
+                .context("filename could not be read")?,
+        );
+        std::env::set_current_dir(database_folder)?;
+
         let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
         let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
         let counter = Arc::new(Mutex::new(0_usize));
@@ -106,7 +117,8 @@ impl Database {
                 }
             }
             .clone();
-        self.save(database_path)?;
+
+        self.save(&database_filename)?;
 
         let mirror_list = match mirror_list.lock() {
             Ok(mirror_list) => mirror_list,
@@ -116,7 +128,11 @@ impl Database {
             }
         };
 
-        self.cleanup(&mirror_list)
+        self.cleanup(&mirror_list)?;
+
+        std::env::set_current_dir(old_dir)?;
+
+        Ok(())
     }
 
     fn save(&self, database_path: &Path) -> Result<()> {
