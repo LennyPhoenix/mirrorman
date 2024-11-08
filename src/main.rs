@@ -30,6 +30,10 @@ pub enum Commands {
     Sync {
         /// An optional set of databases to explicitly sync
         databases: Vec<PathBuf>,
+
+        /// Use recursive directory traversal
+        #[arg(short, long)]
+        recursive: bool,
     },
     /// Outputs the example filter
     ExampleFilter,
@@ -85,27 +89,31 @@ fn sync_database(database_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn sync(databases: Vec<PathBuf>) -> Result<()> {
+fn sync(databases: Vec<PathBuf>, recursive: bool) -> Result<()> {
     pretty_env_logger::init();
 
     if databases.is_empty() {
         let mut any_db = false;
-        WalkDir::new(Path::new("."))
-            .into_iter()
-            .try_for_each(|entry| -> Result<()> {
-                let entry_path = entry?.into_path();
-                if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
-                    if let Err(e) = sync_database(&entry_path) {
-                        log::error!(
-                            "Failed to syncronise database `{0}`: {e}",
-                            entry_path.display()
-                        );
-                    }
 
-                    any_db = true;
+        let mut walkdir = WalkDir::new(Path::new("."));
+        if !recursive {
+            walkdir = walkdir.max_depth(1);
+        }
+
+        walkdir.into_iter().try_for_each(|entry| -> Result<()> {
+            let entry_path = entry?.into_path();
+            if entry_path.is_file() && entry_path.extension().unwrap_or_default() == "mmdb" {
+                if let Err(e) = sync_database(&entry_path) {
+                    log::error!(
+                        "Failed to syncronise database `{0}`: {e}",
+                        entry_path.display()
+                    );
                 }
-                Ok(())
-            })?;
+
+                any_db = true;
+            }
+            Ok(())
+        })?;
 
         if !any_db {
             println!("No databases were found in the current directory to sync, are you in the right place?");
@@ -148,7 +156,10 @@ fn main() -> Result<()> {
             mirror_directory,
             filters,
         } => init(&source_directory, &mirror_directory, &filters),
-        Commands::Sync { databases } => sync(databases),
+        Commands::Sync {
+            databases,
+            recursive,
+        } => sync(databases, recursive),
         Commands::ExampleFilter => example_filter(),
     }
 }
