@@ -58,7 +58,13 @@ impl Database {
                 .file_name()
                 .context("filename could not be read")?,
         );
-        std::env::set_current_dir(database_folder)?;
+        log::debug!("Database path: {0}", database_path.display());
+        if database_folder.as_os_str().is_empty() {
+            log::debug!("Leaving pwd as before, path is relative.");
+        } else {
+            log::debug!("Setting pwd to {0}", database_folder.display());
+            std::env::set_current_dir(database_folder)?;
+        }
 
         let new_hashes = Arc::new(Mutex::new(BTreeMap::new()));
         let mirror_list = Arc::new(Mutex::new(BTreeSet::new()));
@@ -135,7 +141,7 @@ impl Database {
         Ok(())
     }
 
-    fn save(&self, database_path: &Path) -> Result<()> {
+    pub fn save(&self, database_path: &Path) -> Result<()> {
         self.write_to_file(database_path)
     }
 

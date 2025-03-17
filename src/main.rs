@@ -148,6 +148,8 @@ fn example_filter() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    pretty_env_logger::init();
+
     let args = Cli::parse();
 
     match args.cmd {
