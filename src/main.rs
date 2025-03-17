@@ -90,8 +90,6 @@ fn sync_database(database_path: &Path) -> Result<()> {
 }
 
 fn sync(databases: Vec<PathBuf>, recursive: bool) -> Result<()> {
-    pretty_env_logger::init();
-
     if databases.is_empty() {
         let mut any_db = false;
 
