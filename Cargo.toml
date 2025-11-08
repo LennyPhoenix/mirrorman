@@ -1,6 +1,6 @@
 [package]
 name = "mirrorman"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 description = "Media conversion and mirror tool"
 readme = "README.md"
@@ -14,7 +14,7 @@ authors = ["Lenny Critchley <LennyPhoenixC@gmail.com>"]
 
 [dependencies]
 anyhow = "1.0.82"
-base32 = "0.4.0"
+base32 = "0.5.0"
 clap = { version = "4.5.4", features = ["derive"] }
 log = "0.4.21"
 pretty_env_logger = "0.5.0"
@@ -23,3 +23,4 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 sha2 = "0.10.8"
 walkdir = "2.5.0"
+wildmatch = "2.6.0"

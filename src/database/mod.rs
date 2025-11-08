@@ -12,17 +12,22 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{copy, create_dir_all, File},
     io::{stdout, Read, Write},
-    iter::repeat,
+    iter::repeat_n,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use walkdir::WalkDir;
+use wildmatch::WildMatch;
 
 #[derive(Serialize, Deserialize)]
 pub struct Database {
     filters: Vec<String>,
     source_path: PathBuf,
     mirror_path: PathBuf,
+
+    #[serde(default)]
+    ignore_destination: Vec<String>,
+
     // Key = Source, Value = Hash
     hashes: BTreeMap<PathBuf, String>,
 }
@@ -31,11 +36,14 @@ impl Database {
     pub fn new(source_path: PathBuf, mirror_path: PathBuf, filters: Vec<String>) -> Self {
         let hashes = BTreeMap::new();
 
+        // TODO(Lenny): Add args for ignore fields
+
         Self {
             source_path,
             mirror_path,
             hashes,
             filters,
+            ignore_destination: Vec::new(),
         }
     }
 
@@ -231,7 +239,17 @@ impl Database {
             .try_for_each(|entry| -> Result<()> {
                 let entry_path = entry?.into_path();
 
-                if !mirror_list.contains(&entry_path) {
+                let stripped = entry_path
+                    .components()
+                    .skip(self.mirror_path.components().count())
+                    .collect::<PathBuf>();
+                let ignore = stripped.to_str().is_some_and(|path| {
+                    self.ignore_destination
+                        .iter()
+                        .any(|ignore_pattern| WildMatch::new(ignore_pattern).matches(path))
+                });
+
+                if !mirror_list.contains(&entry_path) && !ignore {
                     log::info!("Removing `{0}`...", entry_path.display());
                     if entry_path.is_dir() {
                         std::fs::remove_dir_all(&entry_path).with_context(|| {
@@ -261,14 +279,14 @@ impl Database {
         let num_blocks = 20 * *counter / max_count;
 
         let mut bar = Vec::<char>::new();
-        bar.extend(repeat('=').take(num_blocks));
+        bar.extend(repeat_n('=', num_blocks));
         let count = if num_blocks < BLOCK_COUNT {
             bar.push('>');
             BLOCK_COUNT - num_blocks - 1
         } else {
             0
         };
-        bar.extend(repeat(' ').take(count));
+        bar.extend(repeat_n(' ', count));
         let bar = bar.into_iter().collect::<String>();
 
         print!("\r[{bar}] {progress:.1}%");
